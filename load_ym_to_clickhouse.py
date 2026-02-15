@@ -105,6 +105,7 @@ class YMToClickHouseLoader:
         self.config = config
         self.api_host = 'https://api-metrika.yandex.ru'
         self.ch_client = None
+        self.available_fields = None  # Will be populated after field detection
 
     def validate_config(self):
         """Validate required configuration parameters"""
@@ -151,9 +152,153 @@ class YMToClickHouseLoader:
         except Exception as e:
             raise ClickHouseError(f"Failed to connect to ClickHouse: {e}")
 
+    def detect_available_fields(self):
+        """
+        Automatically detect which fields are available for the counter.
+        Tests each field and filters out unavailable ones.
+        """
+        logger.info("Detecting available fields for the counter...")
+
+        header_dict = {
+            'Authorization': f'OAuth {self.config["ym_token"]}',
+            'Content-Type': 'application/x-yametrika+json'
+        }
+
+        # Start with minimal required fields that should always be available
+        base_fields = ['ym:s:visitID', 'ym:s:date', 'ym:s:clientID']
+
+        # Test with base fields first
+        url_params = urlencode([
+            ('date1', self.config['start_date']),
+            ('date2', self.config['end_date']),
+            ('source', 'visits'),
+            ('fields', ','.join(base_fields))
+        ])
+
+        url = f"{self.api_host}/management/v1/counter/{self.config['ym_counter_id']}/logrequests/evaluate?{url_params}"
+
+        try:
+            response = requests.get(url, headers=header_dict, timeout=30)
+            if response.status_code != 200:
+                raise YandexMetricaAPIError(f"Cannot access counter API: {response.status_code}")
+        except requests.RequestException as e:
+            raise YandexMetricaAPIError(f"Failed to connect to API: {e}")
+
+        # Now test all fields together and identify unavailable ones
+        available = list(base_fields)  # Start with base fields
+        unavailable = []
+
+        # Test remaining fields in batches
+        remaining_fields = [f for f in self.API_FIELDS if f not in base_fields]
+
+        logger.info(f"Testing {len(remaining_fields)} additional fields...")
+
+        # Try all fields together first
+        test_fields = base_fields + remaining_fields
+        url_params = urlencode([
+            ('date1', self.config['start_date']),
+            ('date2', self.config['end_date']),
+            ('source', 'visits'),
+            ('fields', ','.join(test_fields))
+        ])
+
+        url = f"{self.api_host}/management/v1/counter/{self.config['ym_counter_id']}/logrequests/evaluate?{url_params}"
+
+        try:
+            response = requests.get(url, headers=header_dict, timeout=30)
+
+            if response.status_code == 200:
+                # All fields are available
+                available = list(self.API_FIELDS)
+                logger.info(f"All {len(available)} fields are available!")
+            else:
+                # Some fields are not available, need to identify which ones
+                logger.info("Some fields are unavailable, testing individually...")
+
+                # Extract field name from error if possible
+                error_data = response.json() if response.status_code == 400 else {}
+                error_message = error_data.get('message', '')
+
+                # Try to extract unavailable field from error message
+                import re
+                match = re.search(r'ym:s:\w+', error_message)
+                if match:
+                    unavailable_field = match.group(0)
+                    logger.info(f"Identified unavailable field from error: {unavailable_field}")
+                    unavailable.append(unavailable_field)
+
+                    # Remove it and try again recursively
+                    test_fields = [f for f in test_fields if f != unavailable_field]
+
+                    # Test again with this field removed
+                    while test_fields:
+                        url_params = urlencode([
+                            ('date1', self.config['start_date']),
+                            ('date2', self.config['end_date']),
+                            ('source', 'visits'),
+                            ('fields', ','.join(test_fields))
+                        ])
+
+                        url = f"{self.api_host}/management/v1/counter/{self.config['ym_counter_id']}/logrequests/evaluate?{url_params}"
+                        response = requests.get(url, headers=header_dict, timeout=30)
+
+                        if response.status_code == 200:
+                            available = test_fields
+                            break
+                        else:
+                            error_data = response.json() if response.status_code == 400 else {}
+                            error_message = error_data.get('message', '')
+                            match = re.search(r'ym:s:\w+', error_message)
+                            if match:
+                                unavailable_field = match.group(0)
+                                if unavailable_field not in unavailable:
+                                    logger.info(f"Found another unavailable field: {unavailable_field}")
+                                    unavailable.append(unavailable_field)
+                                    test_fields = [f for f in test_fields if f != unavailable_field]
+                            else:
+                                # Can't identify the problematic field, give up
+                                logger.warning("Cannot identify unavailable field, using base fields only")
+                                available = base_fields
+                                break
+                else:
+                    # Fallback: test each field individually
+                    logger.info("Testing fields individually (this may take a while)...")
+                    for field in remaining_fields:
+                        test_fields = base_fields + [field]
+                        url_params = urlencode([
+                            ('date1', self.config['start_date']),
+                            ('date2', self.config['end_date']),
+                            ('source', 'visits'),
+                            ('fields', ','.join(test_fields))
+                        ])
+
+                        url = f"{self.api_host}/management/v1/counter/{self.config['ym_counter_id']}/logrequests/evaluate?{url_params}"
+                        response = requests.get(url, headers=header_dict, timeout=10)
+
+                        if response.status_code == 200:
+                            available.append(field)
+                        else:
+                            unavailable.append(field)
+
+        except requests.RequestException as e:
+            logger.warning(f"Error during field detection: {e}, using all fields")
+            available = list(self.API_FIELDS)
+
+        self.available_fields = tuple(available)
+
+        if unavailable:
+            logger.warning(f"Removed {len(unavailable)} unavailable fields: {', '.join([f.split(':')[-1] for f in unavailable])}")
+
+        logger.info(f"Using {len(self.available_fields)} available fields")
+
+        return self.available_fields
+
     def check_logs_api_availability(self):
         """Check if Logs API request can be created"""
         logger.info("Checking Logs API availability...")
+
+        # Use detected available fields or fall back to all fields
+        fields_to_use = self.available_fields if self.available_fields else self.API_FIELDS
 
         header_dict = {
             'Authorization': f'OAuth {self.config["ym_token"]}',
@@ -164,7 +309,7 @@ class YMToClickHouseLoader:
             ('date1', self.config['start_date']),
             ('date2', self.config['end_date']),
             ('source', 'visits'),
-            ('fields', ','.join(self.API_FIELDS))
+            ('fields', ','.join(fields_to_use))
         ])
 
         url = f"{self.api_host}/management/v1/counter/{self.config['ym_counter_id']}/logrequests/evaluate?{url_params}"
@@ -200,6 +345,9 @@ class YMToClickHouseLoader:
         """Create Logs API request and return request_id"""
         logger.info("Creating Logs API request...")
 
+        # Use detected available fields or fall back to all fields
+        fields_to_use = self.available_fields if self.available_fields else self.API_FIELDS
+
         header_dict = {
             'Authorization': f'OAuth {self.config["ym_token"]}',
             'Content-Type': 'application/x-yametrika+json'
@@ -209,7 +357,7 @@ class YMToClickHouseLoader:
             ('date1', self.config['start_date']),
             ('date2', self.config['end_date']),
             ('source', 'visits'),
-            ('fields', ','.join(sorted(self.API_FIELDS, key=lambda s: s.lower())))
+            ('fields', ','.join(sorted(fields_to_use, key=lambda s: s.lower())))
         ])
 
         url = f"{self.api_host}/management/v1/counter/{self.config['ym_counter_id']}/logrequests?{url_params}"
@@ -315,54 +463,69 @@ class YMToClickHouseLoader:
         return combined_df
 
     def create_clickhouse_table(self):
-        """Create or recreate ClickHouse table"""
+        """Create or recreate ClickHouse table dynamically based on available fields"""
         logger.info("Creating ClickHouse table...")
 
         table_name = f"{self.config['ch_database']}.{self.config['ch_table']}"
-
         drop_query = f"DROP TABLE IF EXISTS {table_name}"
 
-        # Define table schema based on API fields
+        # Use available fields to build dynamic schema
+        fields_to_use = self.available_fields if self.available_fields else self.API_FIELDS
+
+        # Define column types for each field
+        field_types = {
+            'ym:s:visitID': 'visitID UInt64',
+            'ym:s:watchIDs': 'watchIDs String',
+            'ym:s:date': 'date Date',
+            'ym:s:isNewUser': 'isNewUser UInt8',
+            'ym:s:startURL': 'startURL String',
+            'ym:s:endURL': 'endURL String',
+            'ym:s:visitDuration': 'visitDuration UInt32',
+            'ym:s:bounce': 'bounce UInt8',
+            'ym:s:clientID': 'clientID UInt64',
+            'ym:s:goalsID': 'goalsID String',
+            'ym:s:goalsDateTime': 'goalsDateTime String',
+            'ym:s:referer': 'referer String',
+            'ym:s:deviceCategory': 'deviceCategory String',
+            'ym:s:operatingSystemRoot': 'operatingSystemRoot String',
+            'ym:s:UTMCampaign': 'UTMCampaign String',
+            'ym:s:UTMContent': 'UTMContent String',
+            'ym:s:UTMMedium': 'UTMMedium String',
+            'ym:s:UTMSource': 'UTMSource String',
+            'ym:s:UTMTerm': 'UTMTerm String',
+            'ym:s:TrafficSource': 'TrafficSource String',
+            'ym:s:pageViews': 'pageViews UInt32',
+            'ym:s:purchaseID': 'purchaseID String',
+            'ym:s:purchaseDateTime': 'purchaseDateTime String',
+            'ym:s:purchaseRevenue': 'purchaseRevenue String',
+            'ym:s:purchaseCurrency': 'purchaseCurrency String',
+            'ym:s:purchaseProductQuantity': 'purchaseProductQuantity String',
+            'ym:s:productsPurchaseID': 'productsPurchaseID String',
+            'ym:s:productsID': 'productsID String',
+            'ym:s:productsName': 'productsName String',
+            'ym:s:productsCategory': 'productsCategory String',
+            'ym:s:regionCity': 'regionCity String',
+            'ym:s:impressionsURL': 'impressionsURL String',
+            'ym:s:impressionsDateTime': 'impressionsDateTime String',
+            'ym:s:impressionsProductID': 'impressionsProductID String',
+            'ym:s:AdvEngine': 'AdvEngine String',
+            'ym:s:ReferalSource': 'ReferalSource String',
+            'ym:s:SearchEngineRoot': 'SearchEngineRoot String',
+            'ym:s:SearchPhrase': 'SearchPhrase String'
+        }
+
+        # Build column definitions for available fields
+        column_defs = []
+        for field in fields_to_use:
+            if field in field_types:
+                column_defs.append(f"            {field_types[field]}")
+
+        columns_str = ',\n'.join(column_defs)
+
+        # Define table schema based on available fields
         create_query = f"""
         CREATE TABLE {table_name} (
-            visitID UInt64,
-            watchIDs String,
-            date Date,
-            isNewUser UInt8,
-            startURL String,
-            endURL String,
-            visitDuration UInt32,
-            bounce UInt8,
-            clientID UInt64,
-            goalsID String,
-            goalsDateTime String,
-            referer String,
-            deviceCategory String,
-            operatingSystemRoot String,
-            UTMCampaign String,
-            UTMContent String,
-            UTMMedium String,
-            UTMSource String,
-            UTMTerm String,
-            TrafficSource String,
-            pageViews UInt32,
-            purchaseID String,
-            purchaseDateTime String,
-            purchaseRevenue String,
-            purchaseCurrency String,
-            purchaseProductQuantity String,
-            productsPurchaseID String,
-            productsID String,
-            productsName String,
-            productsCategory String,
-            regionCity String,
-            impressionsURL String,
-            impressionsDateTime String,
-            impressionsProductID String,
-            AdvEngine String,
-            ReferalSource String,
-            SearchEngineRoot String,
-            SearchPhrase String
+{columns_str}
         ) ENGINE = MergeTree()
         ORDER BY (clientID, date)
         SETTINGS index_granularity=8192
@@ -373,7 +536,7 @@ class YMToClickHouseLoader:
             logger.info(f"Dropped existing table (if existed): {table_name}")
 
             self.ch_client.get_clickhouse_data(create_query)
-            logger.info(f"Created table: {table_name}")
+            logger.info(f"Created table: {table_name} with {len(column_defs)} columns")
 
         except Exception as e:
             raise ClickHouseError(f"Failed to create table: {e}")
@@ -409,6 +572,9 @@ class YMToClickHouseLoader:
 
             # Initialize ClickHouse client
             self.init_clickhouse_client()
+
+            # Detect available fields for this counter
+            self.detect_available_fields()
 
             # Check Logs API availability
             self.check_logs_api_availability()
