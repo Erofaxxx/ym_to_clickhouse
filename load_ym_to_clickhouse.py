@@ -117,6 +117,23 @@ class YMToClickHouseLoader:
         if missing_keys:
             raise ValueError(f"Missing required configuration: {', '.join(missing_keys)}")
 
+        # Validate dates
+        try:
+            start_date = datetime.strptime(self.config['start_date'], '%Y-%m-%d')
+            end_date = datetime.strptime(self.config['end_date'], '%Y-%m-%d')
+            today = datetime.now()
+
+            if start_date > today or end_date > today:
+                raise ValueError(f"Dates cannot be in the future. Today is {today.strftime('%Y-%m-%d')}")
+
+            if start_date > end_date:
+                raise ValueError(f"Start date ({self.config['start_date']}) cannot be after end date ({self.config['end_date']})")
+
+        except ValueError as e:
+            if "does not match format" in str(e):
+                raise ValueError(f"Invalid date format. Use YYYY-MM-DD format. Error: {e}")
+            raise
+
         logger.info("Configuration validated successfully")
 
     def init_clickhouse_client(self):
@@ -154,7 +171,19 @@ class YMToClickHouseLoader:
 
         try:
             response = requests.get(url, headers=header_dict, timeout=30)
-            response.raise_for_status()
+
+            # Check for errors and provide detailed error message
+            if response.status_code != 200:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_data = response.json()
+                    if 'message' in error_data:
+                        error_msg += f": {error_data['message']}"
+                    if 'errors' in error_data:
+                        error_msg += f". Errors: {error_data['errors']}"
+                except:
+                    error_msg += f". Response: {response.text[:200]}"
+                raise YandexMetricaAPIError(error_msg)
 
             result = response.json().get('log_request_evaluation', {})
 
@@ -187,7 +216,19 @@ class YMToClickHouseLoader:
 
         try:
             response = requests.post(url, headers=header_dict, timeout=30)
-            response.raise_for_status()
+
+            # Check for errors and provide detailed error message
+            if response.status_code != 200:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_data = response.json()
+                    if 'message' in error_data:
+                        error_msg += f": {error_data['message']}"
+                    if 'errors' in error_data:
+                        error_msg += f". Errors: {error_data['errors']}"
+                except:
+                    error_msg += f". Response: {response.text[:200]}"
+                raise YandexMetricaAPIError(error_msg)
 
             request_id = response.json()['log_request']['request_id']
             logger.info(f"Logs API request created with ID: {request_id}")

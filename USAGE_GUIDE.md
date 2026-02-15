@@ -432,29 +432,45 @@ python load_ym_to_clickhouse.py
 
 1. **Неверный токен или нет прав доступа**
    ```
-   ERROR - Failed to check Logs API availability: 403 Client Error
+   ERROR - API returned status 403: Forbidden
    ```
    Решение: Проверьте токен и права доступа к счетчику
 
 2. **Счетчик не найден**
    ```
-   ERROR - Failed to check Logs API availability: 404 Not Found
+   ERROR - API returned status 404: Not Found
    ```
    Решение: Проверьте правильность counter_id
 
-3. **Данные не доступны для выгрузки**
+3. **400 Bad Request - Неверные параметры запроса**
+   ```
+   ERROR - API returned status 400: Bad Request
+   ```
+   Возможные причины:
+   - Некоторые поля недоступны для данного счетчика
+   - Период выгрузки слишком большой
+   - Неверный формат дат
+   - Превышены лимиты API
+
+   Решение:
+   - Проверьте, что все поля доступны в вашем счетчике
+   - Уменьшите период выгрузки (попробуйте 1 неделю вместо месяца)
+   - Убедитесь, что даты в формате YYYY-MM-DD
+   - Проверьте, что даты не находятся в будущем
+
+4. **Данные не доступны для выгрузки**
    ```
    ERROR - Logs API request is not possible for the specified parameters
    ```
    Решение: Проверьте период дат, возможно данные еще не готовы или период слишком большой
 
-4. **Таймаут обработки запроса**
+5. **Таймаут обработки запроса**
    ```
    ERROR - Request processing timeout after 30 minutes
    ```
    Решение: Уменьшите период выгрузки или повторите позже
 
-5. **Ошибка подключения к ClickHouse**
+6. **Ошибка подключения к ClickHouse**
    ```
    ERROR - Failed to connect to ClickHouse: ...
    ```
