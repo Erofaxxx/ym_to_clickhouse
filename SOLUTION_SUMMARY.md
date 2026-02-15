@@ -8,7 +8,7 @@
 **Назначение:** Автоматическая загрузка данных визитов из Яндекс.Метрики в ClickHouse
 
 **Возможности:**
-- ✓ Загрузка всех 40 требуемых параметров визитов
+- ✓ Загрузка 38 параметров визитов (совместимых с API)
 - ✓ Работа через Logs API с автоматическим ожиданием обработки
 - ✓ Создание таблицы в ClickHouse с правильной схемой
 - ✓ Полная обработка ошибок на всех этапах
@@ -16,12 +16,11 @@
 - ✓ Поддержка конфигурации через JSON файл или переменные окружения
 - ✓ Работает на macOS, Linux, Windows
 
-**Загружаемые поля (40 параметров):**
+**Загружаемые поля (38 параметров):**
 - visitID, watchIDs, date, isNewUser
 - startURL, endURL, visitDuration, bounce
 - clientID, goalsID, goalsDateTime, referer
 - deviceCategory, operatingSystemRoot
-- DirectPlatform, DirectConditionType
 - UTMCampaign, UTMContent, UTMMedium, UTMSource, UTMTerm
 - TrafficSource, pageViews
 - purchaseID, purchaseDateTime, purchaseRevenue, purchaseCurrency, purchaseProductQuantity
@@ -29,6 +28,8 @@
 - regionCity
 - impressionsURL, impressionsDateTime, impressionsProductID
 - AdvEngine, ReferalSource, SearchEngineRoot, SearchPhrase
+
+**Примечание:** Поля `DirectPlatform` и `DirectConditionType` удалены, так как они недоступны для большинства счетчиков.
 
 ### 2. query_clickhouse.py (12 KB)
 **Назначение:** Выполнение запросов к ClickHouse с красивым форматированием результатов (как в Jupyter Notebook)

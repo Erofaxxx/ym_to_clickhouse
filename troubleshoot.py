@@ -138,14 +138,15 @@ def test_api_access(config):
         return False
 
     # Test 5: Test with all fields
-    print("\n5. Testing Logs API with all 40 fields...")
+    print("\n5. Testing Logs API with all fields...")
 
+    # Note: DirectPlatform and DirectConditionType removed as they're not available for all counters
     all_fields = [
         'ym:s:visitID', 'ym:s:watchIDs', 'ym:s:date', 'ym:s:isNewUser',
         'ym:s:startURL', 'ym:s:endURL', 'ym:s:visitDuration', 'ym:s:bounce',
         'ym:s:clientID', 'ym:s:goalsID', 'ym:s:goalsDateTime', 'ym:s:referer',
-        'ym:s:deviceCategory', 'ym:s:operatingSystemRoot', 'ym:s:DirectPlatform',
-        'ym:s:DirectConditionType', 'ym:s:UTMCampaign', 'ym:s:UTMContent',
+        'ym:s:deviceCategory', 'ym:s:operatingSystemRoot',
+        'ym:s:UTMCampaign', 'ym:s:UTMContent',
         'ym:s:UTMMedium', 'ym:s:UTMSource', 'ym:s:UTMTerm', 'ym:s:TrafficSource',
         'ym:s:pageViews', 'ym:s:purchaseID', 'ym:s:purchaseDateTime',
         'ym:s:purchaseRevenue', 'ym:s:purchaseCurrency', 'ym:s:purchaseProductQuantity',

@@ -42,6 +42,8 @@ class YMToClickHouseLoader:
     """Loads Yandex Metrica visits data to ClickHouse"""
 
     # Fields to extract from Yandex Metrica API (visits)
+    # Note: Some advertising fields like DirectPlatform and DirectConditionType
+    # are not available for all counters and have been removed
     API_FIELDS = (
         'ym:s:visitID',
         'ym:s:watchIDs',
@@ -57,8 +59,6 @@ class YMToClickHouseLoader:
         'ym:s:referer',
         'ym:s:deviceCategory',
         'ym:s:operatingSystemRoot',
-        'ym:s:DirectPlatform',
-        'ym:s:DirectConditionType',
         'ym:s:UTMCampaign',
         'ym:s:UTMContent',
         'ym:s:UTMMedium',
@@ -339,8 +339,6 @@ class YMToClickHouseLoader:
             referer String,
             deviceCategory String,
             operatingSystemRoot String,
-            DirectPlatform String,
-            DirectConditionType String,
             UTMCampaign String,
             UTMContent String,
             UTMMedium String,

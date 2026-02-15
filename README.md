@@ -45,7 +45,7 @@ python troubleshoot.py --config config.json
 - Правильность токена и прав доступа
 - Доступность счетчика
 - Корректность дат
-- Доступность всех 40 полей для вашего счетчика
+- Доступность всех полей для вашего счетчика
 
 ### 3. Загрузка данных в ClickHouse
 
@@ -97,7 +97,9 @@ python query_clickhouse.py --config config.json --query "SELECT date, COUNT(*) a
 
 ## Загружаемые параметры из Яндекс.Метрики
 
-Программа загружает следующие поля для типа выгрузки "визиты":
+Программа загружает следующие поля для типа выгрузки "визиты" (38 полей):
+
+**Примечание:** Поля `ym:s:DirectPlatform` и `ym:s:DirectConditionType` удалены, так как они недоступны для большинства счетчиков.
 
 - ym:s:visitID - ID визита
 - ym:s:watchIDs - ID просмотров
@@ -113,8 +115,6 @@ python query_clickhouse.py --config config.json --query "SELECT date, COUNT(*) a
 - ym:s:referer - Реферер
 - ym:s:deviceCategory - Категория устройства
 - ym:s:operatingSystemRoot - ОС
-- ym:s:DirectPlatform - Площадка Директа
-- ym:s:DirectConditionType - Тип условия Директа
 - ym:s:UTMCampaign - UTM кампания
 - ym:s:UTMContent - UTM содержание
 - ym:s:UTMMedium - UTM канал
