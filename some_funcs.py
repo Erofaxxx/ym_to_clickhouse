@@ -57,10 +57,20 @@ class simple_ch_client():
         else:
             raise ValueError(r.text)
 
-import plotly
-from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
-from plotly import graph_objs as go
-init_notebook_mode(connected=True)
+try:
+    import plotly
+    from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
+    from plotly import graph_objs as go
+    # Only init notebook mode if running in IPython/Jupyter
+    try:
+        __IPYTHON__
+        init_notebook_mode(connected=True)
+    except NameError:
+        # Not in IPython/Jupyter, skip notebook mode initialization
+        pass
+except ImportError:
+    # Plotly not available, functions using it will fail
+    pass
 
 # Функция для построения воронок в notebook'е
 
