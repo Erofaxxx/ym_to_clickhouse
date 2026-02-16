@@ -1,0 +1,13 @@
+{
+  "ym_token": "YOUR_YANDEX_METRICA_TOKEN",
+  "ym_counter_id": "YOUR_COUNTER_ID",
+  "start_date": "2024-01-01",
+  "end_date": "2024-01-31",
+  "ch_host": "https://your-clickhouse-host:8443",
+  "ch_user": "your_username",
+  "ch_pass": "your_password",
+  "ch_cacert": "YandexInternalRootCA.crt",
+  "ch_database": "default",
+  "export_hits": true,
+  "export_visits": true
+}
